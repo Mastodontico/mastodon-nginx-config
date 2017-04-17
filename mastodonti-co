@@ -1,0 +1,84 @@
+server{
+	listen 80;
+	server_name mail.mastodonti.co;
+	root /srv/http/mail_mastodontico;
+}
+
+## PRODUCTION 
+
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+server {
+  listen 80;
+  listen [::]:80;
+  server_name mastodonti.co www.mastodonti.co;
+  root /srv/http/mastodontico/public;
+  return 301 https://mastodonti.co$request_uri;
+}
+
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  server_name www.mastodonti.co;
+  
+  include snippets/ssl-best.conf;
+  
+  ssl_certificate     /etc/letsencrypt/live/mastodonti.co-0001/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/mastodonti.co-0001/privkey.pem;
+  root /docker/mastodon/mastodon/public;
+  return 301 https://mastodonti.co$request_uri;
+}
+
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  server_name mastodonti.co;
+  
+  include snippets/ssl-best.conf;
+
+  ssl_certificate     /etc/letsencrypt/live/mastodonti.co-0001/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/mastodonti.co-0001/privkey.pem;
+
+  keepalive_timeout    70;
+  sendfile             on;
+  client_max_body_size 0;
+
+  root /docker/mastodon/mastodon/public;
+
+  gzip on;
+  gzip_vary on;
+  gzip_proxied any;
+  gzip_comp_level 6;
+  gzip_buffers 16 8k;
+  gzip_http_version 1.1;
+  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+  
+  add_header Content-Security-Policy "script-src 'self'; object-src 'self'; frame-ancestors 'self'";
+
+  
+  location / {
+    try_files $uri @proxy;
+  }
+
+  location @proxy {
+    include snippets/reverse-proxy.conf;
+    proxy_pass http://127.0.0.1:10003;
+    tcp_nodelay on;
+  }
+
+  location /api/v1/streaming {
+    include snippets/reverse-proxy.conf;
+    proxy_pass http://127.0.0.1:10004;
+    proxy_buffering off;
+    proxy_redirect off;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    tcp_nodelay on;
+  }
+
+  error_page 500 501 502 503 504 /500.html;
+}
